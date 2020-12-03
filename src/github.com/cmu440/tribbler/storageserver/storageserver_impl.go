@@ -2,22 +2,22 @@ package storageserver
 
 import (
 	"errors"
-	"sync"
-	"strconv"
-	"net"
 	"fmt"
-	"net/rpc"
-	"net/http"
-	"strings"
-	"github.com/cmu440/tribbler/rpc/storagerpc"
 	"github.com/cmu440/tribbler/libstore"
+	"github.com/cmu440/tribbler/rpc/storagerpc"
+	"net"
+	"net/http"
+	"net/rpc"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 type serverRole string
 
 const (
 	MasterServer serverRole = "MASTER"
-	SlaveServer serverRole = "SLAVE"
+	SlaveServer  serverRole = "SLAVE"
 )
 
 type storageServer struct {
@@ -25,19 +25,19 @@ type storageServer struct {
 	mux     sync.Mutex // DO NOT MODIFY
 
 	// TODO: implement this!
-	role serverRole
+	role        serverRole
 	serverNodes []storagerpc.Node
-	node storagerpc.Node
+	node        storagerpc.Node
 
 	masterAddr string // for slave servers
 
-	port int
-	numNodes int
+	port       int
+	numNodes   int
 	virtualIDs []uint32
 
 	readyChan chan bool
 
-	serverJoinChan chan storagerpc.Node
+	serverJoinChan      chan storagerpc.Node
 	serverJoinReplyChan chan *storagerpc.RegisterReply
 
 	itemStorage map[string]string
@@ -74,7 +74,7 @@ func NewStorageServer(masterServerHostPort string, numNodes, port int, virtualID
 		ss.masterAddr = masterServerHostPort
 	}
 
-	ss.node = storagerpc.Node { HostPort: "localhost:" + strconv.Itoa(port), VirtualIDs: virtualIDs }
+	ss.node = storagerpc.Node{HostPort: "localhost:" + strconv.Itoa(port), VirtualIDs: virtualIDs}
 	ss.itemStorage = make(map[string]string)
 	ss.listStorage = make(map[string][]string)
 	ss.serverJoinChan = make(chan storagerpc.Node)
@@ -87,32 +87,32 @@ func NewStorageServer(masterServerHostPort string, numNodes, port int, virtualID
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-    if err != nil {
-        return nil, err
-    }
+	if err != nil {
+		return nil, err
+	}
 
 	err = rpc.RegisterName("StorageServer", storagerpc.Wrap(ss))
-    if err != nil {
-        return nil, err
+	if err != nil {
+		return nil, err
 	}
-	
+
 	rpc.HandleHTTP()
-    go http.Serve(listener, nil)
+	go http.Serve(listener, nil)
 
 	if ss.role == MasterServer {
 		ss.mux.Lock()
-		ss.serverNodes = append(ss.serverNodes, storagerpc.Node { 
-			HostPort: "localhost:" + strconv.Itoa(port), 
-			VirtualIDs: virtualIDs, 
+		ss.serverNodes = append(ss.serverNodes, storagerpc.Node{
+			HostPort:   "localhost:" + strconv.Itoa(port),
+			VirtualIDs: virtualIDs,
 		})
 		ss.mux.Unlock()
 
 		if len(ss.serverNodes) != ss.numNodes {
 			for {
-				newNode := <- ss.serverJoinChan
+				newNode := <-ss.serverJoinChan
 
 				exists := false
-				for _, n := range(ss.serverNodes) {
+				for _, n := range ss.serverNodes {
 					if n.HostPort == newNode.HostPort {
 						exists = true
 					}
@@ -122,14 +122,14 @@ func NewStorageServer(masterServerHostPort string, numNodes, port int, virtualID
 				}
 
 				if len(ss.serverNodes) == ss.numNodes {
-					ss.serverJoinReplyChan <- &storagerpc.RegisterReply {
-						Status: storagerpc.OK,
+					ss.serverJoinReplyChan <- &storagerpc.RegisterReply{
+						Status:  storagerpc.OK,
 						Servers: ss.serverNodes,
 					}
 					break
 				}
-				 
-				ss.serverJoinReplyChan <- &storagerpc.RegisterReply {
+
+				ss.serverJoinReplyChan <- &storagerpc.RegisterReply{
 					Status: storagerpc.NotReady,
 				}
 			}
@@ -145,12 +145,12 @@ func NewStorageServer(masterServerHostPort string, numNodes, port int, virtualID
 func (ss *storageServer) registerServer(args *storagerpc.RegisterArgs, reply *storagerpc.RegisterReply) error {
 	if ss.role == SlaveServer {
 		return errors.New("request sent to slave server")
-	} 
-	
+	}
+
 	if len(ss.serverNodes) < ss.numNodes {
 		server := args.ServerInfo
 		ss.serverJoinChan <- server
-		reply = <- ss.serverJoinReplyChan
+		reply = <-ss.serverJoinReplyChan
 	} else {
 		reply.Status = storagerpc.OK
 		reply.Servers = ss.serverNodes
@@ -174,8 +174,8 @@ func findStorageServer(ss *storageServer, key string) storagerpc.Node {
 	var server storagerpc.Node
 	var nearestID uint32 = ^uint32(0)
 
-	for _, n := range(ss.serverNodes) {
-		for _, id := range(n.VirtualIDs) {
+	for _, n := range ss.serverNodes {
+		for _, id := range n.VirtualIDs {
 			if id >= hash && id < nearestID {
 				nearestID = id
 				server = n
@@ -202,7 +202,7 @@ func (ss *storageServer) get(args *storagerpc.GetArgs, reply *storagerpc.GetRepl
 		reply.Value = value
 	}
 
-	reply.Lease = storagerpc.Lease { Granted: false }
+	reply.Lease = storagerpc.Lease{Granted: false}
 	return nil
 }
 
@@ -241,7 +241,7 @@ func (ss *storageServer) getList(args *storagerpc.GetArgs, reply *storagerpc.Get
 		reply.Value = value
 	}
 
-	reply.Lease = storagerpc.Lease { Granted: false }
+	reply.Lease = storagerpc.Lease{Granted: false}
 
 	return nil
 }
@@ -271,7 +271,7 @@ func (ss *storageServer) appendToList(args *storagerpc.PutArgs, reply *storagerp
 	value, _ := ss.listStorage[args.Key]
 	reply.Status = storagerpc.OK
 
-	for _, v := range(value) {
+	for _, v := range value {
 		if v == args.Value {
 			reply.Status = storagerpc.ItemExists
 			return nil
@@ -295,8 +295,8 @@ func (ss *storageServer) removeFromList(args *storagerpc.PutArgs, reply *storage
 		reply.Status = storagerpc.KeyNotFound
 	} else {
 		var newList []string
-		for _, v := range(value) {
-			if v != args.Value { 
+		for _, v := range value {
+			if v != args.Value {
 				newList = append(newList, v)
 			}
 		}
