@@ -3,8 +3,14 @@ package storageserver
 import (
 	"errors"
 	"sync"
-
+	"strconv"
+	"net"
+	"fmt"
+	"net/rpc"
+	"net/http"
+	"strings"
 	"github.com/cmu440/tribbler/rpc/storagerpc"
+	"github.com/cmu440/tribbler/libstore"
 )
 
 type serverRole string
@@ -32,7 +38,7 @@ type storageServer struct {
 	readyChan chan bool
 
 	serverJoinChan chan storagerpc.Node
-	serverJoinReplyChan chan storagerpc.RegisterReply
+	serverJoinReplyChan chan *storagerpc.RegisterReply
 
 	itemStorage map[string]string
 	listStorage map[string][]string
@@ -60,22 +66,22 @@ func NewStorageServer(masterServerHostPort string, numNodes, port int, virtualID
 	/****************************************************************************/
 
 	// TODO: implement this!
-	if masterServerHostPort == nil || masterServerHostPort == "" {
+	if masterServerHostPort == "" {
 		ss.role = MasterServer
-		masterAddr = nil
+		ss.masterAddr = ""
 	} else {
 		ss.role = SlaveServer
-		masterAddr = masterServerHostPort
+		ss.masterAddr = masterServerHostPort
 	}
 
-	ss.node := Node { HostPort: 'localhost:' + strconv(port), virtualIDs: virtualIDs }
+	ss.node = storagerpc.Node { HostPort: "localhost:" + strconv.Itoa(port), VirtualIDs: virtualIDs }
 	ss.itemStorage = make(map[string]string)
 	ss.listStorage = make(map[string][]string)
-	
+	ss.serverJoinChan = make(chan storagerpc.Node)
+	ss.serverJoinReplyChan = make(chan *storagerpc.RegisterReply)
+
 	if ss.role == MasterServer {
-		ss.mux.Lock()
-		ss.serverNodes = append(ss.serverNodes, node)
-		ss.mux.Unlock()
+		ss.serverNodes = append(ss.serverNodes, ss.node)
 	} else {
 		// ignore for checkpoint
 	}
@@ -96,50 +102,47 @@ func NewStorageServer(masterServerHostPort string, numNodes, port int, virtualID
 	if ss.role == MasterServer {
 		ss.mux.Lock()
 		ss.serverNodes = append(ss.serverNodes, storagerpc.Node { 
-			HostPort: 'localhost:' + strconv(port), 
-			virtualIDs: virtualIDs, 
+			HostPort: "localhost:" + strconv.Itoa(port), 
+			VirtualIDs: virtualIDs, 
 		})
 		ss.mux.Unlock()
 
-		for {
-			newNode := <- ss.serverJoinChan
+		if len(ss.serverNodes) != ss.numNodes {
+			for {
+				newNode := <- ss.serverJoinChan
 
-			ss.mux.Lock()
-			exists := false
-			for _, n in range(ss.serverNodes) {
-				if n == newNode {
-					exists = true
+				exists := false
+				for _, n := range(ss.serverNodes) {
+					if n.HostPort == newNode.HostPort {
+						exists = true
+					}
+				}
+				if !exists {
+					ss.serverNodes = append(ss.serverNodes, newNode)
+				}
+
+				if len(ss.serverNodes) == ss.numNodes {
+					ss.serverJoinReplyChan <- &storagerpc.RegisterReply {
+						Status: storagerpc.OK,
+						Servers: ss.serverNodes,
+					}
+					break
+				}
+				 
+				ss.serverJoinReplyChan <- &storagerpc.RegisterReply {
+					Status: storagerpc.NotReady,
 				}
 			}
-			if !exists {
-				ss.serverNodes = append(ss.serverNodes, newNode)
-			}
-
-			if len(ss.serverNodes) == ss.numNodes {
-				ss.serverJoinReplyChan <- storagerpc.RegisterReply {
-					Status: storagerpc.OK,
-					Servers: ss.serverNodes,
-				}
-				ss.mux.Unlock()
-				break
-			}
-			 
-			ss.serverJoinReplyChan <- storagerpc.RegisterReply {
-				Status: storagerpc.NotReady,
-			}
-			ss.mux.Unlock()
 		}
 	} else {
 		// ignored for checkpoint
 	}
 
-	err := nil
+	err = nil
 	return ss, err
 }
 
 func (ss *storageServer) registerServer(args *storagerpc.RegisterArgs, reply *storagerpc.RegisterReply) error {
-	ss.mux.Lock()
-	defer ss.mux.Unlock()
 	if ss.role == SlaveServer {
 		return errors.New("request sent to slave server")
 	} 
@@ -152,6 +155,7 @@ func (ss *storageServer) registerServer(args *storagerpc.RegisterArgs, reply *st
 		reply.Status = storagerpc.OK
 		reply.Servers = ss.serverNodes
 	}
+	return nil
 }
 
 func (ss *storageServer) getServers(args *storagerpc.GetServersArgs, reply *storagerpc.GetServersReply) error {
@@ -162,15 +166,16 @@ func (ss *storageServer) getServers(args *storagerpc.GetServersArgs, reply *stor
 	} else {
 		reply.Servers = ss.serverNodes
 	}
+	return nil
 }
 
 func findStorageServer(ss *storageServer, key string) storagerpc.Node {
-	hash := libstore.StoreHash(string.split(key, ':')[0])
+	hash := libstore.StoreHash(strings.Split(key, ":")[0])
 	var server storagerpc.Node
 	var nearestID uint32 = ^uint32(0)
 
 	for _, n := range(ss.serverNodes) {
-		for _, id := range(n.virtualIDs) {
+		for _, id := range(n.VirtualIDs) {
 			if id >= hash && id < nearestID {
 				nearestID = id
 				server = n
@@ -185,9 +190,9 @@ func (ss *storageServer) get(args *storagerpc.GetArgs, reply *storagerpc.GetRepl
 	ss.mux.Lock()
 	defer ss.mux.Unlock()
 
-	if ss.node != findStorageServer(ss, args.Key) {
-		return errors.New("key doesn't belong to this server")
-	}
+	// if ss.node != findStorageServer(ss, args.Key) {
+	// 	return errors.New("key doesn't belong to this server")
+	// }
 
 	value, found := ss.itemStorage[args.Key]
 	if !found {
@@ -197,6 +202,7 @@ func (ss *storageServer) get(args *storagerpc.GetArgs, reply *storagerpc.GetRepl
 		reply.Value = value
 	}
 
+	reply.Lease = storagerpc.Lease { Granted: false }
 	return nil
 }
 
@@ -204,16 +210,16 @@ func (ss *storageServer) delete(args *storagerpc.DeleteArgs, reply *storagerpc.D
 	ss.mux.Lock()
 	defer ss.mux.Unlock()
 
-	if ss.node != findStorageServer(ss, args.Key) {
-		return errors.New("key doesn't belong to this server")
-	}
+	// if ss.node != findStorageServer(ss, args.Key) {
+	// 	return errors.New("key doesn't belong to this server")
+	// }
 
-	value, found := ss.itemStorage[args.Key]
+	_, found := ss.itemStorage[args.Key]
 	if !found {
 		reply.Status = storagerpc.KeyNotFound
 	} else {
 		reply.Status = storagerpc.OK
-		delete(ss.storage, args.Key)
+		delete(ss.itemStorage, args.Key)
 	}
 
 	return nil
@@ -223,9 +229,9 @@ func (ss *storageServer) getList(args *storagerpc.GetArgs, reply *storagerpc.Get
 	ss.mux.Lock()
 	defer ss.mux.Unlock()
 
-	if ss.node != findStorageServer(ss, args.Key) {
-		return errors.New("key doesn't belong to this server")
-	}
+	// if ss.node != findStorageServer(ss, args.Key) {
+	// 	return errors.New("key doesn't belong to this server")
+	// }
 
 	value, found := ss.listStorage[args.Key]
 	if !found {
@@ -235,6 +241,8 @@ func (ss *storageServer) getList(args *storagerpc.GetArgs, reply *storagerpc.Get
 		reply.Value = value
 	}
 
+	reply.Lease = storagerpc.Lease { Granted: false }
+
 	return nil
 }
 
@@ -242,9 +250,9 @@ func (ss *storageServer) put(args *storagerpc.PutArgs, reply *storagerpc.PutRepl
 	ss.mux.Lock()
 	defer ss.mux.Unlock()
 
-	if ss.node != findStorageServer(ss, args.Key) {
-		return errors.New("key doesn't belong to this server")
-	}
+	// if ss.node != findStorageServer(ss, args.Key) {
+	// 	return errors.New("key doesn't belong to this server")
+	// }
 
 	ss.itemStorage[args.Key] = args.Value
 	reply.Status = storagerpc.OK
@@ -256,17 +264,17 @@ func (ss *storageServer) appendToList(args *storagerpc.PutArgs, reply *storagerp
 	ss.mux.Lock()
 	defer ss.mux.Unlock()
 
-	if ss.node != findStorageServer(ss, args.Key) {
-		return errors.New("key doesn't belong to this server")
-	}
+	// if ss.node != findStorageServer(ss, args.Key) {
+	// 	return errors.New("key doesn't belong to this server")
+	// }
 
-	value, found := ss.listStorage[args.Key]
+	value, _ := ss.listStorage[args.Key]
 	reply.Status = storagerpc.OK
 
 	for _, v := range(value) {
 		if v == args.Value {
 			reply.Status = storagerpc.ItemExists
-			break
+			return nil
 		}
 	}
 	ss.listStorage[args.Key] = append(value, args.Value)
@@ -278,15 +286,15 @@ func (ss *storageServer) removeFromList(args *storagerpc.PutArgs, reply *storage
 	ss.mux.Lock()
 	defer ss.mux.Unlock()
 
-	if ss.node != findStorageServer(ss, args.Key) {
-		return errors.New("key doesn't belong to this server")
-	}
+	// if ss.node != findStorageServer(ss, args.Key) {
+	// 	return errors.New("key doesn't belong to this server")
+	// }
 
 	value, found := ss.listStorage[args.Key]
 	if !found {
 		reply.Status = storagerpc.KeyNotFound
 	} else {
-		newList := nil
+		var newList []string
 		for _, v := range(value) {
 			if v != args.Value { 
 				newList = append(newList, v)
@@ -297,6 +305,7 @@ func (ss *storageServer) removeFromList(args *storagerpc.PutArgs, reply *storage
 		} else {
 			reply.Status = storagerpc.OK
 		}
+		ss.listStorage[args.Key] = newList
 	}
 
 	return nil
