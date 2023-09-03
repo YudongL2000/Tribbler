@@ -1,60 +1,14 @@
-P3: Tribbler
-============
-
-This repository contains the starter code for project 3 (15-440, Fall 2020).
+## Tribbler Database
+This repository contains the implementation for Tribbler, a three layer distributed database, developed from a project from CMU (15-440, Fall 2020).
 These instructions assume you have set your `GOPATH` to point to the repository's
 root `p3/` directory.
 
 **Note that if you choose to test your implementation on AFS cluster, you need to manually install Go 1.15. For more instruction about setting up AFS, please check the README file in the P0 repo.**
 
-## Starter Code
-
-The starter code for this project is organized roughly as follows:
-
-```
-bin/                               Student-compiled binaries
-
-sols/                              Staff-compiled binaries
-  darwin_amd64/                    Staff-compiled Mac OS X executables
-    crunner                        Staff-compiled TribClient-runner
-    trunner                        Staff-compiled TribServer-runner
-    lrunner                        Staff-compiled Libstore-runner
-    srunner                        Staff-compiled StorageServer-runner
-
-  linux_amd64/                     Staff-compiled Linux executables
-    (see above)
-
-src/github.com/cmu440/tribbler/
-  tribclient/                      TribClient implementation
-  tribserver/                      TODO: implement the TribServer
-  libstore/                        TODO: implement the Libstore
-  storageserver/                   TODO: implement the StorageServer
-
-  util/                            Util functions
-    keyFormatter.go                Format the key posted to storage server
-
-  tests/                           Source code for official tests
-    proxycounter/                  Utility package used by the official tests
-    tribtest/                      Tests the TribServer
-    libtest/                       Tests the Libstore
-    storagetest/                   Tests the StorageServer
-    stresstest/                    Tests everything
-    
-  tests_cp/                        Source code for official tests (checkpoint)
-    (subset of above)
-
-  rpc/
-    tribrpc/                       TribServer RPC helpers/constants
-    librpc/                        Libstore RPC helpers/constants
-    storagerpc/                    StorageServer RPC helpers/constants
-
-tests_cp/                          Shell scripts to run the test for a checkpoint implementation
-tests/                             Shell scripts to run the tests for a final implementation
-```
 
 ## Instructions
 
-### Compiling your code
+### Compiling
 
 To and compile your code, execute one or more of the following commands (the
 resulting binaries will be located in the `$GOPATH/bin` directory):
