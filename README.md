@@ -149,39 +149,3 @@ code located in the `p3/src/github.com/cmu440/tribbler/tests/` directory. Simila
 will also run against the staff-solution binaries discussed above,
 thus enabling us to test the correctness of individual components of your system
 as opposed to your entire Tribbler system as a whole.
-
-If you and your partner are still confused about the behavior of the testing scripts (even
-after you've analyzed its source code), please don't hesitate to ask us a question on Piazza!
-
-### Submitting to Gradescope
-
-To submit your code to Gradescope, create a `tribbler.zip` file containing your implementation as follows:
-
-```sh
-cd $GOPATH/src/github.com/cmu440
-zip -r tribbler.zip tribbler
-```
-
-Note: if tribbler.zip already exists and contains files that you have since deleted from your filesystem, the above command will not remove those files from tribbler.zip.  Instead, you will need to delete tribbler.zip and run the command again.  This is a common source of mysterious `go fmt` failures on Gradescope.
-
-## Miscellaneous
-
-### Reading the starter code documentation
-
-Before you begin the project, you should read and understand all of the starter code we provide.
-To make this experience a little less traumatic, fire up a web server and read the
-documentation in a browser by executing the following command:
-
-```sh
-godoc -http=:6060 &
-```
-
-If you don't have godoc already, you may have to run:
-
-```sh
-go get -v golang.org/x/tools/cmd/godoc
-```
-
-Then, navigate to [localhost:6060/pkg/github.com/cmu440/tribbler](http://localhost:6060/pkg/github.com/cmu440/tribbler)
-in a browser (note that you can execute this command from anywhere in your system, assuming your `GOPATH`
-is set correctly).
