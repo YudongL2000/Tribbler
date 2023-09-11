@@ -1,5 +1,5 @@
-## Tribbler Database
-This repository contains the implementation for Tribbler, a three layer distributed database, developed from a project from CMU (15-440, Fall 2020).
+## Tribbler information dissemination service
+This repository contains the implementation for Tribbler, a three layer  information dissemination service, developed from a project from CMU (15-440, Fall 2020).
 These instructions assume you have set your `GOPATH` to point to the repository's
 root `p3/` directory.
 
